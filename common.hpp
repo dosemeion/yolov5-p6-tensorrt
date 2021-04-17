@@ -71,10 +71,10 @@ void nms(std::vector<Yolo::Detection>& res, float *output, float conf_thresh, fl
         if (m.count(det.class_id) == 0) m.emplace(det.class_id, std::vector<Yolo::Detection>());
         m[det.class_id].push_back(det);
     }
-    std::cout << "nms_thresh" << nms_thresh << std::endl;
-    std::cout << "conf_thresh" << conf_thresh << std::endl;
-    std::cout << "ii" << ii << std::endl;
-    std::cout << "m shape:" << m.size() << std::endl;
+    // std::cout << "nms_thresh" << nms_thresh << std::endl;
+    // std::cout << "conf_thresh" << conf_thresh << std::endl;
+    // std::cout << "ii" << ii << std::endl;
+    // std::cout << "m shape:" << m.size() << std::endl;
     for (auto it = m.begin(); it != m.end(); it++) {
         //std::cout << it->second[0].class_id << " --- " << std::endl;
         auto& dets = it->second;

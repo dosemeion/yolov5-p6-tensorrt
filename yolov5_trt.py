@@ -16,9 +16,9 @@ import tensorrt as trt
 import torch
 import torchvision
 
-INPUT_W = 608
-INPUT_H = 608
-CONF_THRESH = 0.1
+INPUT_W = 640
+INPUT_H = 640
+CONF_THRESH = 0.5
 IOU_THRESHOLD = 0.4
 
 
@@ -40,6 +40,8 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
         line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
     )  # line/font thickness
     color = color or [random.randint(0, 255) for _ in range(3)]
+    if x[0] <= 0 or x[1] <= 0 or x[2] <= x[1] or x[3] <= x[1]:
+        return
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
     if label:
@@ -289,9 +291,9 @@ class myThread(threading.Thread):
 
 if __name__ == "__main__":
     # load custom plugins
-    PLUGIN_LIBRARY = "build/libmyplugins.so"
+    PLUGIN_LIBRARY = "./build/libmyplugins.so"
     ctypes.CDLL(PLUGIN_LIBRARY)
-    engine_file_path = "build/yolov5s6.engine"
+    engine_file_path = "./build/yolov5s6.engine"
 
     # load coco labels
 

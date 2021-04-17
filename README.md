@@ -44,14 +44,14 @@ mkdir build
 cd build
 cmake ..
 make
-sudo ./yolov5-p6 -s [.wts] [.engine] [s/m/l/x or c gd gw]  // serialize model to plan file
-sudo ./yolov5-p6 -d [.engine] [image folder]  // deserialize and run inference, the images in [image folder] will be processed.
+sudo ./yolov5 -s [.wts] [.engine] [s/m/l/x or c gd gw]  // serialize model to plan file
+sudo ./yolov5 -d [.engine] [image folder]  // deserialize and run inference, the images in [image folder] will be processed.
 // For example yolov5s6
-sudo ./yolov5-p6 -s yolov5s6.wts yolov5s6.engine s
-sudo ./yolov5-p6 -d yolov5s.engine ../samples
+sudo ./yolov5 -s yolov5s6.wts yolov5s6.engine s
+sudo ./yolov5 -d yolov5s6.engine ../samples
 // For example Custom model with depth_multiple=0.17, width_multiple=0.25 in yolov5.yaml
-sudo ./yolov5-p6 -s yolov5_custom.wts yolov5.engine c 0.17 0.25
-sudo ./yolov5-p6 -d yolov5.engine ../samples
+sudo ./yolov5 -s yolov5_custom.wts yolov5.engine c 0.17 0.25
+sudo ./yolov5 -d yolov56.engine ../samples
 ```
 
 3. check the images generated, as follows. _zidane.jpg and _bus.jpg
@@ -63,8 +63,4 @@ sudo ./yolov5-p6 -d yolov5.engine ../samples
 // ensure the yolov5s6.engine and libmyplugins.so have been built
 python yolov5_trt.py
 ```
-
-## More infomation
-
-please see the readme in (https://github.com/wang-xinyu/tensorrtx)
 

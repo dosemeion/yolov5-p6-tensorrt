@@ -294,6 +294,9 @@ int main(int argc, char** argv) {
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
+    
+
+
     int fcount = 0;
     for (int f = 0; f < (int)file_names.size(); f++) {
         fcount++;
@@ -321,15 +324,15 @@ int main(int argc, char** argv) {
         auto end = std::chrono::system_clock::now();
         std::cout << "model:" << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
         std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
-        std::cout << "fcount:" << fcount << std::endl;
+//        std::cout << "fcount:" << fcount << std::endl;
         for (int b = 0; b < fcount; b++) {
             auto& res = batch_res[b];
             auto s_nms = std::chrono::system_clock::now();
             nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
             auto e_nms = std::chrono::system_clock::now();
             std::cout << "nms:" << std::chrono::duration_cast<std::chrono::milliseconds>(e_nms - s_nms).count() << "ms" << std::endl;
-            std::cout << "res nms shape:" << res.size() << std::endl;
-            std::cout << "res:" << *res[0].bbox << std::endl;
+//            std::cout << "res nms shape:" << res.size() << std::endl;
+//            std::cout << "res:" << *res[0].bbox << std::endl;
         }
 
         for (int b = 0; b < fcount; b++) {
