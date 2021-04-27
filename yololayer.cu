@@ -31,8 +31,8 @@ namespace nvinfer1
         mYoloV5NetWidth = netWidth;
         mYoloV5NetHeight = netHeight;
         mMaxOutObject = maxOut;
-        mYoloKernel = vYoloKernel;
-        mKernelCount = vYoloKernel.size();
+        mYoloKernel = vYoloKernel; // 4个head(xl,l,m,s), 包含：特征图w,h,anchors
+        mKernelCount = vYoloKernel.size(); // 4尺度输出
 
         CUDA_CHECK(cudaMallocHost(&mAnchor, mKernelCount * sizeof(void*)));
         size_t AnchorLen = sizeof(float)* CHECK_COUNT * 2;
@@ -63,7 +63,7 @@ namespace nvinfer1
         read(d, mYoloV5NetWidth);
         read(d, mYoloV5NetHeight);
         read(d, mMaxOutObject);
-        mYoloKernel.resize(mKernelCount);
+        mYoloKernel.resize(mKernelCount); 
         auto kernelSize = mKernelCount * sizeof(YoloKernel);
         memcpy(mYoloKernel.data(), d, kernelSize);
         d += kernelSize;
@@ -177,22 +177,25 @@ namespace nvinfer1
         return p;
     }
 
-    __device__ float Logist(float data) { return 1.0f / (1.0f + expf(-data)); };
+    // GPU调用
+    inline __device__ float Logist(float data) { return 1.0f / (1.0f + expf(-data)); };
 
+    // GPU或CPU都可调用
     __global__ void CalDetection(const float *input, float *output, int noElements,
         const int netwidth, const int netheight, int maxoutobject, int yoloWidth, int yoloHeight, const float anchors[CHECK_COUNT * 2], int classes, int outputElem)
     {
-
+        // threadIdx线程索引，blockIdx线程块索引，blockDim线程块大小
         int idx = threadIdx.x + blockDim.x * blockIdx.x;
+        // noElements一个尺度特征图的cell数量
         if (idx >= noElements) return;
-
+        // printf("threadIdx.x:%d, blockDim.x:%d, blockIdx.x:%d, noElements:%d\n", threadIdx.x, blockDim.x, blockIdx.x, noElements);
         int total_grid = yoloWidth * yoloHeight;
         int bnIdx = idx / total_grid;
         idx = idx - total_grid * bnIdx;
         int info_len_i = 5 + classes;
         const float* curInput = input + bnIdx * (info_len_i * total_grid * CHECK_COUNT);
 
-        for (int k = 0; k < 4; ++k) {
+        for (int k = 0; k < CHECK_COUNT; ++k) {
             float box_prob = Logist(curInput[idx + k * info_len_i * total_grid + 4 * total_grid]);
             if (box_prob < IGNORE_THRESH) continue;
             int class_id = 0;
@@ -221,7 +224,7 @@ namespace nvinfer1
             //  X: (sigmoid(tx) + cx)/FeaturemapW *  netwidth 
             det->bbox[0] = (col - 0.5f + 2.0f * Logist(curInput[idx + k * info_len_i * total_grid + 0 * total_grid])) * netwidth / yoloWidth;
             det->bbox[1] = (row - 0.5f + 2.0f * Logist(curInput[idx + k * info_len_i * total_grid + 1 * total_grid])) * netheight / yoloHeight;
-
+            // printf("k:%d yoloHeight:%d yoloWidth:%d idx:%d row:%d col:%d det->bbox[0]:%f det->bbox[1]:%f\n", k, yoloHeight, yoloWidth, idx, row, col, det->bbox[0], det->bbox[1]);
             // W: (Pw * e^tw) / FeaturemapW * netwidth  
             // v5: https://github.com/ultralytics/yolov5/issues/471
             det->bbox[2] = 2.0f * Logist(curInput[idx + k * info_len_i * total_grid + 2 * total_grid]);
@@ -231,7 +234,7 @@ namespace nvinfer1
             det->conf = box_prob * max_cls_prob;
             det->class_id = class_id;
         }
-    }
+    } 
 
     void YoloLayerPlugin::forwardGpu(const float *const * inputs, float* output, cudaStream_t stream, int batchSize)
     {
@@ -243,12 +246,12 @@ namespace nvinfer1
         for (unsigned int i = 0; i < mYoloKernel.size(); ++i)
         {
             const auto& yolo = mYoloKernel[i];
-            numElem = yolo.width*yolo.height*batchSize; 
+            numElem = yolo.width*yolo.height*batchSize; // 每个尺度特征图的cell数量
             if (numElem < mThreadCount)
                 mThreadCount = numElem;
 
-            //printf("Net: %d  %d \n", mYoloV5NetWidth, mYoloV5NetHeight);
-            CalDetection << < (yolo.width*yolo.height*batchSize + mThreadCount - 1) / mThreadCount, mThreadCount >> >
+            // printf("Net: %d  %d \n", mYoloV5NetWidth, mYoloV5NetHeight);
+            CalDetection <<< (yolo.width*yolo.height*batchSize + mThreadCount - 1) / mThreadCount, mThreadCount >>>
                 (inputs[i], output, numElem, mYoloV5NetWidth, mYoloV5NetHeight, mMaxOutObject, yolo.width, yolo.height, (float *)mAnchor[i], mClassCount, outputElem);
         }
     }
@@ -292,27 +295,28 @@ namespace nvinfer1
         int input_w = -1;
         int input_h = -1;
         int max_output_object_count = -1;
-        std::vector<Yolo::YoloKernel> yolo_kernels(4); // 4个head
+        std::vector<Yolo::YoloKernel> yolo_kernels(4); // 4个head(xl,l,m,s)
 
-        const PluginField* fields = fc->fields;
+        const PluginField* fields = fc->fields; // pluginMultidata: [name, data, type, length]
         // 提取pluginMultidata的输入宽高和anchor参数
-        for (int i = 0; i < fc->nbFields; i++) { // nbFields=4
-            if (strcmp(fields[i].name, "netdata") == 0) {
+        for (int i = 0; i < fc->nbFields; i++) { // nbFields=5
+            if (strcmp(fields[i].name, "netdata") == 0) { // 网络参数
                 assert(fields[i].type == PluginFieldType::kFLOAT32);
                 int *tmp = (int*)(fields[i].data);
-                class_count = tmp[0];
-                input_w = tmp[1];
-                input_h = tmp[2];
-                max_output_object_count = tmp[3];
+                class_count = tmp[0]; // 类别数
+                input_w = tmp[1]; // 图像输入宽度
+                input_h = tmp[2]; // 图像输入高度
+                max_output_object_count = tmp[3]; // 最大检测目标数
             } else if (strstr(fields[i].name, "yolodata") != NULL) {
                 assert(fields[i].type == PluginFieldType::kFLOAT32);
                 int *tmp = (int*)(fields[i].data);
                 YoloKernel kernel;
-                kernel.width = tmp[0];
-                kernel.height = tmp[1];
+                kernel.width = tmp[0]; // 特征图宽度
+                kernel.height = tmp[1]; // 特征图高度
                 for (int j = 0; j < fields[i].length - 2; j++) {
-                    kernel.anchors[j] = tmp[j + 2];
+                    kernel.anchors[j] = tmp[j + 2]; // anchor尺寸
                 }
+                // fields[i].name[8]: 1,2,3,4->0,1,2,3->3,2,1,0(s,m,l,xl)
                 yolo_kernels[3 - (fields[i].name[8] - '1')] = kernel;
             }
         }

@@ -6,11 +6,13 @@
 
 static inline cv::Mat preprocess_img(cv::Mat& img, int input_w, int input_h) {
     int w, h, x, y;
+    // Scale ratio (new / old)
     float r_w = input_w / (img.cols*1.0);
     float r_h = input_h / (img.rows*1.0);
-    if (r_h > r_w) {
-        w = input_w;
-        h = r_w * img.rows;
+    if (r_h >= r_w) {
+        
+        w = input_w; // new w
+        h = r_w * img.rows; // new h
         x = 0;
         y = (input_h - h) / 2;
     } else {

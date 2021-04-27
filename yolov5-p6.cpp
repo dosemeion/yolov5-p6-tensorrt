@@ -8,8 +8,12 @@
 
 #define USE_FP32  // set USE_INT8 or USE_FP16 or USE_FP32
 #define DEVICE 0  // GPU id
-#define NMS_THRESH 0.5
-#define CONF_THRESH 0.45
+// 过滤规则: 
+// 1.先在网络输出时进行一次过滤，将前景置信(box_prob)<0.1(IGNORE_THRESH)滤掉，同时box的类别选取概率最大的类别
+// 并将conf=obj_conf*cls_conf。此规则可在yololayer.cu的CalDetection中修改
+// 2.NMS过滤时，先根据conf<=conf_thresh过滤，再计算iou，iou>nms_thresh滤掉。此规则可在common.hpp的nms中修改
+#define NMS_THRESH 0.5 // iou阈值
+#define CONF_THRESH 0.3
 #define BATCH_SIZE 1
 
 // stuff we know about the network and the input/output blobs
@@ -117,9 +121,9 @@ ICudaEngine* build_engine_p6(unsigned int maxBatchSize, IBuilder* builder, IBuil
     IConvolutionLayer* det_m = network->addConvolutionNd(*c3_26->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.1.weight"], weightMap["model.33.m.1.bias"]);
     //yolo layer large
     IConvolutionLayer* det_l = network->addConvolutionNd(*c3_29->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.2.weight"], weightMap["model.33.m.2.bias"]);
-    //yolo layer large
+    //yolo layer xlarge
     IConvolutionLayer* det_xl = network->addConvolutionNd(*c3_32->getOutput(0), 3 * (Yolo::CLASS_NUM + 5), DimsHW{ 1, 1 }, weightMap["model.33.m.3.weight"], weightMap["model.33.m.3.bias"]);
-    
+
     auto yolo = addYoLoLayer(network, weightMap, det_s, det_m, det_l, det_xl);
     yolo->getOutput(0)->setName(OUTPUT_BLOB_NAME);
     network->markOutput(*yolo->getOutput(0));
@@ -215,6 +219,12 @@ bool parse_args(int argc, char** argv, std::string& wts, std::string& engine, fl
 }
 
 int main(int argc, char** argv) {
+    // check input size
+    if (INPUT_H % 32 != 0 || INPUT_W % 32 != 0){
+        std::cerr << "INPUT_H("<< INPUT_H << ")" << " and INPUT_W(" << INPUT_W << ")" <<" must be divisible by 32."<< std::endl;
+        return -1;
+    }
+
     cudaSetDevice(DEVICE);
 
     std::string wts_name = "";
@@ -294,65 +304,118 @@ int main(int argc, char** argv) {
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
-    
+
+    // 图像检测
+    // int fcount = 0;
+    // for (int f = 0; f < (int)file_names.size(); f++) {
+    //     fcount++;
+    //     if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
+    //     for (int b = 0; b < fcount; b++) {
+    //         cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
+            
+    //         if (img.empty()) continue;
+    //         cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+    //         int i = 0;
+    //         for (int row = 0; row < INPUT_H; ++row) {
+    //             uchar* uc_pixel = pr_img.data + row * pr_img.step;
+    //             for (int col = 0; col < INPUT_W; ++col) {
+    //                 data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
+    //                 data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+    //                 data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+    //                 uc_pixel += 3;
+    //                 ++i;
+    //             }
+    //         }
+    //     }
+
+    //     // Run inference
+    //     auto start = std::chrono::system_clock::now();
+    //     doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
+    //     auto end = std::chrono::system_clock::now();
+    //     // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
+    //     std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
+    //     for (int b = 0; b < fcount; b++) {
+    //         auto& res = batch_res[b];
+    //         nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
+    //     }
+    //     for (int b = 0; b < fcount; b++) {
+    //         auto& res = batch_res[b];
+    //         //std::cout << res.size() << std::endl;
+    //         cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
+    //         for (size_t j = 0; j < res.size(); j++) {
+    //             cv::Rect r = get_rect(img, res[j].bbox);
+    //             auto x = r.x;
+    //             auto y = r.y;
+    //             auto w = r.width;
+    //             auto h = r.height;
+    //             if (x <= 0 || y <= 0 || w <= 0 || h <= 0) continue;
+    //             cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
+    //             cv::putText(img, std::to_string((int)res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+    //         }
+    //         cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
+    //     }
+    //     fcount = 0;
+    // }
 
 
-    int fcount = 0;
-    for (int f = 0; f < (int)file_names.size(); f++) {
-        fcount++;
-        if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
-        for (int b = 0; b < fcount; b++) {
-            cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-            if (img.empty()) continue;
-            cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
-            int i = 0;
-            for (int row = 0; row < INPUT_H; ++row) {
-                uchar* uc_pixel = pr_img.data + row * pr_img.step;
-                for (int col = 0; col < INPUT_W; ++col) {
-                    data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
-                    data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-                    data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-                    uc_pixel += 3;
-                    ++i;
-                }
+
+    // 视频检测
+    cv::VideoCapture cap;
+    cap.open(img_dir + "/" + file_names[0]);
+    if (!cap.isOpened())
+    {
+		std::cerr << "Can not open video file.\n" << std::endl;
+		return -1;
+    }
+
+    cv::Size size_v = cv::Size(cap.get(cv::CAP_PROP_FRAME_WIDTH), cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    cv::VideoWriter writer = cv::VideoWriter("../video/_" + file_names[0], cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), cap.get(cv::CAP_PROP_FPS), size_v, true);
+    if (!writer.isOpened())
+	{
+		std::cerr << "Can not create video file.\n" << std::endl;
+		return -1;
+	}
+    cv::Mat img;
+    while (1){
+        cap >> img;  
+        if (img.empty()) continue;
+
+        cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+        int i = 0;
+        for (int row = 0; row < INPUT_H; ++row) {
+            uchar* uc_pixel = pr_img.data + row * pr_img.step;
+            for (int col = 0; col < INPUT_W; ++col) {
+                data[i] = (float)uc_pixel[2] / 255.0;
+                data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+                data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+                uc_pixel += 3;
+                ++i;
             }
         }
 
         // Run inference
-        auto start = std::chrono::system_clock::now();
         doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
-        auto end = std::chrono::system_clock::now();
-        std::cout << "model:" << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-        std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
-//        std::cout << "fcount:" << fcount << std::endl;
-        for (int b = 0; b < fcount; b++) {
-            auto& res = batch_res[b];
-            auto s_nms = std::chrono::system_clock::now();
-            nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
-            auto e_nms = std::chrono::system_clock::now();
-            std::cout << "nms:" << std::chrono::duration_cast<std::chrono::milliseconds>(e_nms - s_nms).count() << "ms" << std::endl;
-//            std::cout << "res nms shape:" << res.size() << std::endl;
-//            std::cout << "res:" << *res[0].bbox << std::endl;
-        }
+ 
+        std::vector<Yolo::Detection> batch_res;
 
-        for (int b = 0; b < fcount; b++) {
-            auto& res = batch_res[b];
-            //std::cout << res.size() << std::endl;
-            cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-            for (size_t j = 0; j < res.size(); j++) {
-                cv::Rect r = get_rect(img, res[j].bbox);
-                auto x = r.x;
-                auto y = r.y;
-                auto w = r.width;
-                auto h = r.height;
-                if (x <= 0 || y <= 0 || w <= 0 || h <= 0) continue;
-                cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-                cv::putText(img, std::to_string((int)res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
-            }
-            cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
+        nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
+   
+        for (size_t j = 0; j < batch_res.size(); j++) {
+            cv::Rect r = get_rect(img, batch_res[j].bbox);
+            // check Rect
+            auto x = r.x;
+            auto y = r.y;
+            auto w = r.width;
+            auto h = r.height;
+            if (x <= 0 || y <= 0 || w <= 0 || h <= 0) continue;
+            cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
+            cv::putText(img, std::to_string((int)batch_res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
         }
-        fcount = 0;
+        writer.write(img);
+
     }
+
+
 
     // Release stream and buffers
     cudaStreamDestroy(stream);

@@ -2,12 +2,17 @@
 
 The TensorRT implementation is base on [tensorrtx](https://github.com/wang-xinyu/tensorrtx)
 
+## tensorrtx中的yolov5大概有两个坑
+
+- get_rect没有判断矩形是不是正确的，导致画出来的矩形可能只是一个点。
+   
+- 当设置其他输入size时，如果不小心把输入H或W写成不能被32整除，那么编译，搭建，检测都不会报错，只是最后出来的框很奇怪。
 
 ## Different versions of yolov5
 
-Currently, It support yolov5-p6 v4.0.
+Currently, It support yolov5-p6 v4.0 & v5.0.
 
-- For yolov5 v4.0, download .pt from [yolov5 release v4.0](https://github.com/ultralytics/yolov5/releases/tag/v4.0), `git clone -b v4.0 https://github.com/ultralytics/yolov5.git` and `git clone https://github.com/wang-xinyu/tensorrtx.git`.
+- For yolov5 v4.0, download .pt from [yolov5 release v4.0](https://github.com/ultralytics/yolov5/releases/tag/v4.0), `git clone -b v4.0 https://github.com/ultralytics/yolov5.git` and `git clone https://github.com/dosemeion/yolov5-p6-tensorrt.git`.
 
 ## Config
 

@@ -13,9 +13,11 @@
 using namespace nvinfer1;
 
 cv::Rect get_rect(cv::Mat& img, float bbox[4]) {
+    // bbox: xywh
     int l, r, t, b; // left_top x, right_bot x, left_top y, right_bot y
     float r_w = Yolo::INPUT_W / (img.cols * 1.0);
     float r_h = Yolo::INPUT_H / (img.rows * 1.0);
+    // 
     if (r_h > r_w) {
         l = bbox[0] - bbox[2] / 2.f;
         r = bbox[0] + bbox[2] / 2.f;
@@ -59,22 +61,16 @@ bool cmp(const Yolo::Detection& a, const Yolo::Detection& b) {
 }
 
 void nms(std::vector<Yolo::Detection>& res, float *output, float conf_thresh, float nms_thresh = 0.5) {
-    int det_size = sizeof(Yolo::Detection) / sizeof(float);
+    int det_size = sizeof(Yolo::Detection) / sizeof(float); // 4+1+1
     std::map<float, std::vector<Yolo::Detection>> m;
     
-    int ii = 0;
     for (int i = 0; i < output[0] && i < Yolo::MAX_OUTPUT_BBOX_COUNT; i++) {
         if (output[1 + det_size * i + 4] <= conf_thresh) continue;
         Yolo::Detection det;
-        ii++;
         memcpy(&det, &output[1 + det_size * i], det_size * sizeof(float));
         if (m.count(det.class_id) == 0) m.emplace(det.class_id, std::vector<Yolo::Detection>());
         m[det.class_id].push_back(det);
     }
-    // std::cout << "nms_thresh" << nms_thresh << std::endl;
-    // std::cout << "conf_thresh" << conf_thresh << std::endl;
-    // std::cout << "ii" << ii << std::endl;
-    // std::cout << "m shape:" << m.size() << std::endl;
     for (auto it = m.begin(); it != m.end(); it++) {
         //std::cout << it->second[0].class_id << " --- " << std::endl;
         auto& dets = it->second;
@@ -305,8 +301,8 @@ std::vector<float> getAnchors(std::map<std::string, Weights>& weightMap)
     return anchors_yolo;
 }
 
-IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, Weights>& weightMap, IConvolutionLayer* det0, 
-    IConvolutionLayer* det1, IConvolutionLayer* det2, IConvolutionLayer* det3)
+IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, Weights>& weightMap, IConvolutionLayer* det_s, 
+    IConvolutionLayer* det_m, IConvolutionLayer* det_l, IConvolutionLayer* det_xl)
 {
     // 通过getPluginRegistry获取所有TensorRT插件，creator即IPluginCreator对象
     //                                                  (pluginName, pluginVersion)
@@ -320,7 +316,7 @@ IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, 
     NetData[2] = Yolo::INPUT_H;
     NetData[3] = Yolo::MAX_OUTPUT_BBOX_COUNT;
     pluginMultidata[0].data = NetData;
-    pluginMultidata[0].length = 4;
+    pluginMultidata[0].length = 4; // data的长度
     pluginMultidata[0].name = "netdata";
     pluginMultidata[0].type = PluginFieldType::kFLOAT32;
     int scale[4] = { 8, 16, 32, 64 };
@@ -335,7 +331,7 @@ IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, 
             plugindata[k - 1][i] = int(anchors_yolo[(k - 1) * 6 + i - 2]);
         }
         pluginMultidata[k].data = plugindata[k - 1];
-        pluginMultidata[k].length = 8;
+        pluginMultidata[k].length = 8; // data的长度
         names[k - 1] = "yolodata" + std::to_string(k);
         pluginMultidata[k].name = names[k - 1].c_str();
         pluginMultidata[k].type = PluginFieldType::kFLOAT32;
@@ -344,8 +340,9 @@ IPluginV2Layer* addYoLoLayer(INetworkDefinition *network, std::map<std::string, 
     pluginData.nbFields = 5; // 网络参数+4个head
     pluginData.fields = pluginMultidata;
     IPluginV2 *pluginObj = creator->createPlugin("yololayer", &pluginData);
-    ITensor* inputTensors_yolo[] = { det3->getOutput(0), det2->getOutput(0), det1->getOutput(0), det0->getOutput(0) };
+    ITensor* inputTensors_yolo[] = { det_xl->getOutput(0), det_l->getOutput(0), det_m->getOutput(0), det_s->getOutput(0) };
     auto yolo = network->addPluginV2(inputTensors_yolo, 4, *pluginObj);
+    // printf("net")
     return yolo;
 }
 #endif
