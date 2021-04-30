@@ -2,11 +2,17 @@
 
 The TensorRT implementation is base on [tensorrtx](https://github.com/wang-xinyu/tensorrtx)
 
-## tensorrtx中的yolov5大概有两个坑
+## tensorrtx中的yolov5大概有以下几个坑
 
-- get_rect没有判断矩形是不是正确的，导致画出来的矩形可能只是一个点。
+- get_rect没有判断生成的矩形框是不是正确的，导致画出来的矩形可能只是一个点。
    
-- 当设置其他输入size时，如果不小心把输入H或W写成不能被32整除，那么编译，搭建，检测都不会报错，只是最后出来的框很奇怪。
+- 当设置其他输入size时，如果不小心把INPUT_H或INPUT_W写成不能被32整除的数，那么编译，搭建，检测都不会报错，只是最后出来的框很奇怪。
+
+- tensorrtx中yololayer.cu选取最大概率类别时，用的是conf_cls，而u版是conf_cls*conf_obj。
+
+- tensorrtx中yololayer.h的IGNORE_THRESH阈值应该与主函数中的CONF_THRESH阈值相同。
+
+- u版在nms还有一步scale_coords，其中clip_coords操作在tensorrtx中并没有，只是用了get_rect做了转换并没有判断是否超出图像边界。
 
 ## Different versions of yolov5
 

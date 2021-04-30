@@ -8,7 +8,7 @@
 namespace Yolo
 {
     static constexpr int CHECK_COUNT = 3; // 每个尺度anchor个数
-    static constexpr float IGNORE_THRESH = 0.1f;
+    static constexpr float IGNORE_THRESH = 0.45f;
     struct YoloKernel
     {
         int width;

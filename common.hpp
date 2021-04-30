@@ -12,34 +12,64 @@
 
 using namespace nvinfer1;
 
-cv::Rect get_rect(cv::Mat& img, float bbox[4]) {
-    // bbox: xywh
-    int l, r, t, b; // left_top x, right_bot x, left_top y, right_bot y
-    float r_w = Yolo::INPUT_W / (img.cols * 1.0);
-    float r_h = Yolo::INPUT_H / (img.rows * 1.0);
-    // 
-    if (r_h > r_w) {
-        l = bbox[0] - bbox[2] / 2.f;
-        r = bbox[0] + bbox[2] / 2.f;
-        t = bbox[1] - bbox[3] / 2.f - (Yolo::INPUT_H - r_w * img.rows) / 2;
-        b = bbox[1] + bbox[3] / 2.f - (Yolo::INPUT_H - r_w * img.rows) / 2;
-        l = l / r_w;
-        r = r / r_w;
-        t = t / r_w;
-        b = b / r_w;
-    } else {
-        l = bbox[0] - bbox[2] / 2.f - (Yolo::INPUT_W - r_h * img.cols) / 2;
-        r = bbox[0] + bbox[2] / 2.f - (Yolo::INPUT_W - r_h * img.cols) / 2;
-        t = bbox[1] - bbox[3] / 2.f;
-        b = bbox[1] + bbox[3] / 2.f;
-        l = l / r_h;
-        r = r / r_h;
-        t = t / r_h;
-        b = b / r_h;
+
+void xywh2xyxy(std::vector<Yolo::Detection>& res){
+    for (std::size_t i = 0; i < res.size(); i++){
+        float box[4];
+        for (int j=0; j < 4; j++){
+            memcpy(&box[j], &res[i].bbox[j], sizeof(float));
+        }        
+        res[i].bbox[0] = box[0] - box[2] / 2.0f; // top left x
+        res[i].bbox[1] = box[1] - box[3] / 2.0f; // top left y
+        res[i].bbox[2] = box[0] + box[2] / 2.0f; // bottom right x
+        res[i].bbox[3] = box[1] + box[3] / 2.0f; // bottom right y
     }
-    // std::cout << "rect" << l << " " << t << " " << r - l << " " << b - t << std::endl;
-    return cv::Rect(l, t, r - l, b - t);
 }
+
+
+void xyxy2xywh(std::vector<Yolo::Detection>& res){
+    for (std::size_t i = 0; i < res.size(); i++){
+        float box[4];
+        memcpy(&box, &res[i].bbox[0], 4 * sizeof(float));
+        res[i].bbox[0] = box[0] + (box[2] - box[0]) / 2.0f;
+        res[i].bbox[1] = box[1] + (box[3] - box[1]) / 2.0f;
+        res[i].bbox[2] = (box[2] - box[0]) / 2.0f;
+        res[i].bbox[3] = (box[3] - box[1]) / 2.0f;
+    }
+}
+
+
+void clamp(float& x, int min, int max){
+    if (x < min) {
+        x = min;
+    }
+    if (x > max) {
+        x = max;
+    }
+}
+
+
+void scale_coords(std::vector<Yolo::Detection>& res, int img_w, int img_h){
+    float gain = (std::min)(Yolo::INPUT_W / float(img_w), Yolo::INPUT_H / float(img_h)); // gain  = old / new
+    float pad[2];
+    pad[0] = (Yolo::INPUT_W - img_w * gain) / 2;
+    pad[1] = (Yolo::INPUT_H - img_h * gain) / 2; // wh padding
+    for (std::size_t i = 0; i < res.size(); i++){
+        float box[4];
+        for (int j = 0; j < 4; j++){
+            memcpy(&box[j], &res[i].bbox[j], sizeof(float));
+        } 
+        res[i].bbox[0] = (box[0] - pad[0]) / gain; // x padding
+        res[i].bbox[1] = (box[1] - pad[1]) / gain; // y padding
+        res[i].bbox[2] = (box[2] - pad[0]) / gain; // x padding
+        res[i].bbox[3] = (box[3] - pad[1]) / gain; // y padding
+        clamp(res[i].bbox[0], 0, img_w);
+        clamp(res[i].bbox[1], 0, img_h);
+        clamp(res[i].bbox[2], 0, img_w);
+        clamp(res[i].bbox[3], 0, img_h);
+    }
+}
+
 
 float iou(float lbox[4], float rbox[4]) {
     float interBox[] = {

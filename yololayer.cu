@@ -201,7 +201,7 @@ namespace nvinfer1
             int class_id = 0;
             float max_cls_prob = 0.0;
             for (int i = 5; i < info_len_i; ++i) {
-                float p = Logist(curInput[idx + k * info_len_i * total_grid + i * total_grid]);
+                float p = Logist(curInput[idx + k * info_len_i * total_grid + i * total_grid]) * box_prob;
                 if (p > max_cls_prob) {
                     max_cls_prob = p;
                     class_id = i - 5;
@@ -231,7 +231,7 @@ namespace nvinfer1
             det->bbox[2] = det->bbox[2] * det->bbox[2] * anchors[2 * k];
             det->bbox[3] = 2.0f * Logist(curInput[idx + k * info_len_i * total_grid + 3 * total_grid]);
             det->bbox[3] = det->bbox[3] * det->bbox[3] * anchors[2 * k + 1];
-            det->conf = box_prob * max_cls_prob;
+            det->conf = max_cls_prob;
             det->class_id = class_id;
         }
     } 
