@@ -14,7 +14,7 @@
 // 2.NMS过滤时，先根据conf<=conf_thresh过滤，再计算iou，iou>nms_thresh滤掉。此规则可在common.hpp的nms中修改
 #define NMS_THRESH 0.5 // iou阈值
 #define CONF_THRESH 0.45
-#define BATCH_SIZE 1
+#define BATCH_SIZE 16
 
 // stuff we know about the network and the input/output blobs
 static const int INPUT_H = Yolo::INPUT_H;
@@ -306,122 +306,219 @@ int main(int argc, char** argv) {
 
 
     // 图像检测
-    // int fcount = 0;
-    // for (int f = 0; f < (int)file_names.size(); f++) {
-    //     fcount++;
-    //     if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
-    //     int img_w = 0;
-    //     int img_h = 0;
-    //     for (int b = 0; b < fcount; b++) {
-    //         cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-    //         img_w = img.cols;
-    //         img_h = img.rows;
-    //         if (img.empty()) continue;
-    //         cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
-    //         int i = 0;
-    //         for (int row = 0; row < INPUT_H; ++row) {
-    //             uchar* uc_pixel = pr_img.data + row * pr_img.step;
-    //             for (int col = 0; col < INPUT_W; ++col) {
-    //                 data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
-    //                 data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-    //                 data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-    //                 uc_pixel += 3;
-    //                 ++i;
-    //             }
+//    auto t_start = std::chrono::high_resolution_clock::now();
+//    int fcount = 0;
+//    for (int f = 0; f < (int)file_names.size(); f++) {
+//        fcount++;
+//        if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
+//        int img_w = 0;
+//        int img_h = 0;
+//        for (int b = 0; b < fcount; b++) {
+//            cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
+//            img_w = img.cols;
+//            img_h = img.rows;
+//            if (img.empty()) continue;
+//            cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+//            int i = 0;
+//            for (int row = 0; row < INPUT_H; ++row) {
+//                uchar* uc_pixel = pr_img.data + row * pr_img.step;
+//                for (int col = 0; col < INPUT_W; ++col) {
+//                    data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
+//                    data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+//                    data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+//                    uc_pixel += 3;
+//                    ++i;
+//                }
+//            }
+//        }
+//
+//        // Run inference
+//        doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
+//        // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
+//        std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
+//        for (int b = 0; b < fcount; b++) {
+//            auto& res = batch_res[b];
+//            nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
+//            // for (int i = 0; i < 4; i++){
+//            //     std::cout << "nms.res.box:" << res[0].bbox[i] << std::endl;
+//            // }
+//            xywh2xyxy(res);
+//            // for (int j=0; j < 4; j++){
+//            //     std::cout << "xywh2xyxy.res.box:" << res[0].bbox[j] << std::endl;
+//            // }
+//            scale_coords(res, img_w, img_h);
+//            // for (int j=0; j < 4; j++){
+//            //     std::cout << "scale_coords.res.box:" << res[0].bbox[j] << std::endl;
+//            // }
+//        }
+//        for (int b = 0; b < fcount; b++) {
+//            auto& res = batch_res[b];
+//            //std::cout << res.size() << std::endl;
+//            cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
+//            for (size_t j = 0; j < res.size(); j++) {
+//                // cv::Rect r = get_rect(img, res[j].bbox);
+//                cv::Rect r = cv::Rect(res[j].bbox[0], res[j].bbox[1], res[j].bbox[2] - res[j].bbox[0], res[j].bbox[3] - res[j].bbox[1]);
+//                cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
+//                cv::putText(img, std::to_string((int)res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+//            }
+//            // cv::imshow("1", img);
+//            // cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
+//            // cv::waitKey();
+//        }
+//        fcount = 0;
+//    }
+//    auto t_end = std::chrono::high_resolution_clock::now();
+//    std::chrono::duration<double> diff = t_end - t_start;
+//    std::cout << diff.count() << "s" << std::endl;
+
+
+    // 视频检测
+    // cv::VideoCapture cap;
+    // // cap.open(img_dir + "/" + file_names[0]);
+    // cap.open(img_dir + "/" + "video_avi2_1000frame.avi");
+    // if (!cap.isOpened())
+    // {
+	// 	std::cerr << "Can not open video file.\n" << std::endl;
+	// 	return -1;
+    // }
+    // int img_w = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    // int img_h = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    // cv::Size size_v = cv::Size(img_w, img_h);
+    // // cv::VideoWriter writer = cv::VideoWriter("../video/_" + file_names[0], cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), cap.get(cv::CAP_PROP_FPS), size_v, true);
+    // // if (!writer.isOpened())
+	// // {
+	// // 	std::cerr << "Can not create video file.\n" << std::endl;
+	// // 	return -1;
+	// // }
+    // cv::Mat img;
+    // auto t_start = std::chrono::high_resolution_clock::now();
+    // int i = 0;
+    // while (1){
+    //     i += 1;
+    //     if (i == 1000) break;
+    //     cap >> img;  
+    //     if (img.empty()) break;
+        
+    //     cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+    //     int i = 0;
+    //     for (int row = 0; row < INPUT_H; ++row) {
+    //         uchar* uc_pixel = pr_img.data + row * pr_img.step;
+    //         for (int col = 0; col < INPUT_W; ++col) {
+    //             data[i] = (float)uc_pixel[2] / 255.0;
+    //             data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+    //             data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+    //             uc_pixel += 3;
+    //             ++i;
     //         }
     //     }
 
     //     // Run inference
     //     doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
-    //     // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-    //     std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
-    //     for (int b = 0; b < fcount; b++) {
-    //         auto& res = batch_res[b];
-    //         nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
-    //         for (int i = 0; i < 4; i++){
-    //             std::cout << "nms.res.box:" << res[0].bbox[i] << std::endl;
-    //         }
-    //         xywh2xyxy(res);
-    //         for (int j=0; j < 4; j++){
-    //             std::cout << "xywh2xyxy.res.box:" << res[0].bbox[j] << std::endl;
-    //         }
-    //         scale_coords(res, img_w, img_h);
-    //         for (int j=0; j < 4; j++){
-    //             std::cout << "scale_coords.res.box:" << res[0].bbox[j] << std::endl;
-    //         }
-    //     }
-    //     for (int b = 0; b < fcount; b++) {
-    //         auto& res = batch_res[b];
-    //         //std::cout << res.size() << std::endl;
-    //         cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-    //         for (size_t j = 0; j < res.size(); j++) {
-    //             // cv::Rect r = get_rect(img, res[j].bbox);
-    //             cv::Rect r = cv::Rect(res[j].bbox[0], res[j].bbox[1], res[j].bbox[2] - res[j].bbox[0], res[j].bbox[3] - res[j].bbox[1]);
-    //             cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-    //             cv::putText(img, std::to_string((int)res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
-    //         }
-    //         cv::imshow("1", img);
-    //         cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
-    //         cv::waitKey();
-    //     }
-    //     fcount = 0;
-    // }
-
-
-
-    // 视频检测
-    cv::VideoCapture cap;
-    cap.open(img_dir + "/" + file_names[0]);
-    if (!cap.isOpened())
-    {
-		std::cerr << "Can not open video file.\n" << std::endl;
-		return -1;
-    }
-    int img_w = cap.get(cv::CAP_PROP_FRAME_WIDTH);
-    int img_h = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
-    cv::Size size_v = cv::Size(img_w, img_h);
-    cv::VideoWriter writer = cv::VideoWriter("../video/_" + file_names[0], cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), cap.get(cv::CAP_PROP_FPS), size_v, true);
-    if (!writer.isOpened())
-	{
-		std::cerr << "Can not create video file.\n" << std::endl;
-		return -1;
-	}
-    cv::Mat img;
-    while (1){
-        cap >> img;  
-        if (img.empty()) continue;
-
-        cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
-        int i = 0;
-        for (int row = 0; row < INPUT_H; ++row) {
-            uchar* uc_pixel = pr_img.data + row * pr_img.step;
-            for (int col = 0; col < INPUT_W; ++col) {
-                data[i] = (float)uc_pixel[2] / 255.0;
-                data[i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-                data[i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
-                uc_pixel += 3;
-                ++i;
-            }
-        }
-
-        // Run inference
-        doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
  
-        std::vector<Yolo::Detection> batch_res;
+    //     std::vector<Yolo::Detection> batch_res;
 
-        nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
-        xywh2xyxy(batch_res);
-        scale_coords(batch_res, img_w, img_h);
-        for (size_t j = 0; j < batch_res.size(); j++) {
-            // cv::Rect r = get_rect(img, batch_res[j].bbox);
-            cv::Rect r = cv::Rect(batch_res[j].bbox[0], batch_res[j].bbox[1], batch_res[j].bbox[2] - batch_res[j].bbox[0], batch_res[j].bbox[3] - batch_res[j].bbox[1]);
-            cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-            cv::putText(img, std::to_string((int)batch_res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
-        }
-        writer.write(img);
+    //     nms(batch_res, &prob[0], CONF_THRESH, NMS_THRESH);
+    //     xywh2xyxy(batch_res);
+    //     scale_coords(batch_res, img_w, img_h);
+    //     // for (size_t j = 0; j < batch_res.size(); j++) {
+    //     //     // cv::Rect r = get_rect(img, batch_res[j].bbox);
+    //     //     cv::Rect r = cv::Rect(batch_res[j].bbox[0], batch_res[j].bbox[1], batch_res[j].bbox[2] - batch_res[j].bbox[0], batch_res[j].bbox[3] - batch_res[j].bbox[1]);
+    //     //     cv::rectangle(img, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
+    //     //     cv::putText(img, std::to_string((int)batch_res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+    //     // }
+    //     // writer.write(img);
 
-    }
+    // }
+    // auto t_end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> diff = t_end - t_start;
+    // std::cout << diff.count() << "s" << std::endl;
 
+    // 摄像头检测
+     cv::VideoCapture cap0;
+     cv::VideoCapture cap1;
+     cap0.open(0);
+     cap1.open(2);
+     if (!cap0.isOpened() && !cap1.isOpened())
+     {
+	 	std::cerr << "Can not open video file.\n" << std::endl;
+	 	return -1;
+     }
+     int img0_w = cap0.get(cv::CAP_PROP_FRAME_WIDTH);
+     int img0_h = cap0.get(cv::CAP_PROP_FRAME_HEIGHT);
+     // cv::Size size0_v = cv::Size(img0_w, img0_h);
+     int img1_w = cap1.get(cv::CAP_PROP_FRAME_WIDTH);
+     int img1_h = cap1.get(cv::CAP_PROP_FRAME_HEIGHT);
+     // cv::Size size1_v = cv::Size(img1_w, img1_h);
+     std::vector<int> img_w;
+     img_w.push_back(img0_w);
+     img_w.push_back(img1_w);
+     std::vector<int> img_h;
+     img_h.push_back(img0_h);
+     img_h.push_back(img1_h);
+    
+     cv::Mat img0;
+     cv::Mat img1;
+     while (1){
+         cap0 >> img0;
+         cap1 >> img1;
+         if (img0.empty() || img1.empty()) continue;
+
+         std::vector<cv::Mat> img;
+         img.push_back(img0);
+         img.push_back(img1);
+
+         cv::Mat pr_img0 = preprocess_img(img0, INPUT_W, INPUT_H); // letterbox
+         cv::Mat pr_img1 = preprocess_img(img1, INPUT_W, INPUT_H); // letterbox
+         std::vector<cv::Mat> pr_img;
+         pr_img.push_back(pr_img0);
+         pr_img.push_back(pr_img1);
+
+         // for (int b = 0; b < BATCH_SIZE; b++) {
+         //     cv::imshow(std::to_string(b), pr_img[b]);
+         //     cv::waitKey(1);
+         // }
+
+         for (int b = 0; b < BATCH_SIZE; b++) {
+             int i = 0;
+             for (int row = 0; row < INPUT_H; ++row) {
+                 uchar* uc_pixel = pr_img[b].data + row * pr_img[b].step;
+                 for (int col = 0; col < INPUT_W; ++col) {
+                     data[i + b * 3 * INPUT_H * INPUT_W] = (float)uc_pixel[2] / 255.0;
+                     data[i + INPUT_H * INPUT_W + b * 3 * INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+                     data[i + 2 * INPUT_H * INPUT_W + b * 3 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+                     uc_pixel += 3;
+                     ++i;
+                 }
+             }
+         }
+         // Run inference
+         doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
+ 
+         std::vector<std::vector<Yolo::Detection>> batch_res(BATCH_SIZE);
+
+         for (int b = 0; b < BATCH_SIZE; b++) {
+             auto& res = batch_res[b];
+             nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
+             std::cout << "res1:" << res.size() << std::endl;
+             xywh2xyxy(res);
+             std::cout << "img_w:" << img_w[b] << std::endl;
+             std::cout << "img_h:" << img_h[b] << std::endl;
+             scale_coords(res, img_w[b], img_h[b]);
+             std::cout << "res2:" << res.size() << std::endl;
+         }
+        
+         for (int b = 0; b < BATCH_SIZE; b++){
+             auto& res = batch_res[b];
+             for (size_t j = 0; j < res.size(); j++) {
+                 // cv::Rect r = get_rect(img, batch_res[j].bbox);
+                 cv::Rect r = cv::Rect(res[j].bbox[0], res[j].bbox[1], res[j].bbox[2] - res[j].bbox[0], res[j].bbox[3] - res[j].bbox[1]);
+                 cv::rectangle(img[b], r, cv::Scalar(0x27, 0xC1, 0x36), 2);
+                 cv::putText(img[b], std::to_string((int)res[j].class_id), cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+             }
+             cv::imshow(std::to_string(b), img[b]);
+             cv::waitKey(1);
+         }
+     }
 
 
     // Release stream and buffers

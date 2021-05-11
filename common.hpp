@@ -18,7 +18,7 @@ void xywh2xyxy(std::vector<Yolo::Detection>& res){
         float box[4];
         for (int j=0; j < 4; j++){
             memcpy(&box[j], &res[i].bbox[j], sizeof(float));
-        }        
+        }
         res[i].bbox[0] = box[0] - box[2] / 2.0f; // top left x
         res[i].bbox[1] = box[1] - box[3] / 2.0f; // top left y
         res[i].bbox[2] = box[0] + box[2] / 2.0f; // bottom right x
@@ -59,7 +59,7 @@ void scale_coords(std::vector<Yolo::Detection>& res, int img_w, int img_h){
         for (int j = 0; j < 4; j++){
             memcpy(&box[j], &res[i].bbox[j], sizeof(float));
         } 
-        res[i].bbox[0] = (box[0] - pad[0]) / gain; // x padding
+        res[i].bbox[0] = (box[0] - pad[0]) / gain; // x paddingimg_w
         res[i].bbox[1] = (box[1] - pad[1]) / gain; // y padding
         res[i].bbox[2] = (box[2] - pad[0]) / gain; // x padding
         res[i].bbox[3] = (box[3] - pad[1]) / gain; // y padding
